@@ -37,10 +37,6 @@ inputs:
     description: A friendly name for this plan
     required: false
     default: ""
-  auto_approve:
-    description: Automatically approve and apply plan
-    required: false
-    default: "false"
   target:
     description: List of resources to target for the apply, one per line
     required: false
@@ -53,10 +49,6 @@ inputs:
     description: Create and apply a plan to destroy all resources
     required: false
     default: "false"
-  plan_path:
-    description: Path to the plan file to apply.
-    required: false
-    default: ""
   backend_type:
     description: The backend plugin name
     required: true
@@ -64,11 +56,14 @@ inputs:
     description: Add the plan to a GitHub PR
     required: false
     default: "true"
-  target_branch_to_apply:
-    description: The name of the branch to trigger an apply on.
-    required: true
-    default: "main"
-  
+  enable_slack_notification_for_approval:
+    description: Enable or Disable slack notifications
+    required: false
+    default: "true"
+  ENABLE_DANGEROUS_AUTO_APPLY_MODE:
+    description: "If enabled, any changes including: Destroy, Apply, Replace will be automatically approved."
+    required: false
+    default: "false"
     
 outputs:
   tofu:
@@ -97,10 +92,10 @@ runs:
   using: "composite"
   steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
     - name: tofu fmt
-      uses: dflook/tofu-fmt-check@v1
+      uses: dflook/tofu-fmt-check@dd2d1ec0ebbf7d1a0f41a13dc71b73dd8cd8c484 # v2.2.2
       id: fmt-check
       with:
         path: ${{ inputs.path }}
@@ -114,7 +109,7 @@ runs:
       run: echo "Please format your tofu correctly. Use 'tofu fmt' or 'tofu fmt'"
 
     - name: tofu validate
-      uses: dflook/tofu-validate@v1
+      uses: dflook/tofu-validate@beb9bb77f83ff5e55f02120b06f4b1c54f23d4f7 # v2.2.2
       id: Validation
       with:
         path: ${{ inputs.path }}
@@ -123,7 +118,7 @@ runs:
         backend_config_file: ${{ inputs.backend_config_file }}
 
     - name: Test tofu-version
-      uses: dflook/tofu-version@v1
+      uses: dflook/tofu-version@48dc8d2a0e064b61f4ebee7cf71dac362436d980 # v2.2.2
       id: Versions
       with:
         path: ${{ inputs.path }}
@@ -132,8 +127,8 @@ runs:
         backend_config_file: ${{ inputs.backend_config_file }}
   
     - name: tofu plan
-      if: github.event.pull_request != null
-      uses: dflook/tofu-plan@v1
+      id: plan
+      uses: dflook/tofu-plan@b6aca1083d8f3876bb60f47414ac53eed2b9e1e7 # v2.2.2
       with:
         path: ${{ inputs.path }}
         workspace: ${{ inputs.workspace }}
@@ -148,9 +143,46 @@ runs:
         destroy: ${{ inputs.destroy }}
         add_github_comment:  ${{ inputs.add_github_comment }}
 
+
+    
+    - name: Notify in Slack about Approving/Denying to continue workflow
+      if: github.ref_name == 'main' && steps.plan.outputs.changes == 'true' && inputs.enable_slack_notification_for_approval == 'true' && github.event_name != 'pull_request' && inputs.ENABLE_DANGEROUS_AUTO_APPLY_MODE == 'false' 
+      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+      with:
+        webhook-type: webhook-trigger
+        payload: |
+           {
+                "attachments": [
+                    {
+                        "color": "#FFA500",
+                        "author_name": ":link: OpenTofu - ${{ github.event.repository.name }} - Job Details",
+                        "author_link": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                        "title": "https://github.com/${{ github.repository }}",
+                        "title_link": "https://github.com/${{ github.repository }}",
+                        "text": ":raising_hand: Approval Required: https://github.com/${{ github.repository }}/issues"
+                    }
+                ]
+            }
+      env:
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+
+    ## IMPORTANT
+    ## DO NOT REMOVE THIS MANUAL APPROVAL STEP UNLESS YOU WANT AUTO APPLY WITHOUT ANY APPROVALS.
+    - name: Approve or Deny tofu apply
+      if: github.ref_name == 'main' && steps.plan.outputs.changes == 'true' && inputs.ENABLE_DANGEROUS_AUTO_APPLY_MODE == 'false'
+      uses: trstringer/manual-approval@74d99dff7380e3e4b122d4ededcbca2b6ce59367 # v1
+      with:
+        secret: ${{ github.TOKEN }}
+        approvers: ${{ github.actor }}
+        minimum-approvals: 1
+        issue-title: "Approve or Deny tofu apply"
+        issue-body: "Approve or Deny tofu apply"
+        exclude-workflow-initiator-as-approver: false
+
     - name: tofu apply
-      if: github.ref_name == 'main'
-      uses: dflook/tofu-apply@v1
+      if: github.ref_name == 'main' && steps.plan.outputs.changes == 'true'
+      uses: dflook/tofu-apply@719dd8f69cef4fe33e7a84a37947940b55dfd1db # v2.2.2
       with:
         path: ${{ inputs.path }}
         workspace: ${{ inputs.workspace }}
@@ -160,8 +192,50 @@ runs:
         var_file: ${{ inputs.var_file }}
         parallelism: ${{ inputs.parallelism }}
         label: ${{ inputs.label }}
-        auto_approve: ${{ inputs.auto_approve }}
+        auto_approve: "true" # SET TO FALSE TO DISABLE AUTO APPLY.
         target: ${{ inputs.target }}
         replace: ${{ inputs.replace }}
         destroy: ${{ inputs.destroy }}
-        plan_path: ${{ inputs.plan_path }}
+
+    - name: Notify on Success
+      if: always() && success()
+      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+      with:
+        webhook-type: webhook-trigger
+        payload: |
+           {
+                "attachments": [
+                    {
+                        "color": "#36a64f",
+                        "author_name": ":link: OpenTofu - ${{ github.event.repository.name }} - Job Details",
+                        "author_link": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                        "title": "https://github.com/${{ github.repository }}",
+                        "title_link": "https://github.com/${{ github.repository }}",
+                        "text": ":large_green_circle: SUCCESS :large_green_circle:"
+                    }
+                ]
+            }
+      env:
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+
+    - name: Notify on Failure
+      if: always() && failure()
+      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+      with:
+        webhook-type: webhook-trigger
+        payload: |
+           {
+                "attachments": [
+                    {
+                        "color": "#FF0000",
+                        "author_name": ":link: OpenTofu - ${{ github.event.repository.name }} - Job Details",
+                        "author_link": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                        "title": "https://github.com/${{ github.repository }}",
+                        "title_link": "https://github.com/${{ github.repository }}",
+                        "text": ":rotating_light: FAILURE :rotating_light:"
+                    }
+                ]
+            }
+      env:
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
