@@ -95,7 +95,7 @@ runs:
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
     - name: tofu fmt
-      uses: dflook/tofu-fmt-check@dd2d1ec0ebbf7d1a0f41a13dc71b73dd8cd8c484 # v2.2.2
+      uses: dflook/tofu-fmt-check@1ae8a83029b8ad8e6c6a12834e0d3d9cd0e34d5f # v2.2.3
       id: fmt-check
       with:
         path: ${{ inputs.path }}
@@ -109,7 +109,7 @@ runs:
       run: echo "Please format your tofu correctly. Use 'tofu fmt' or 'tofu fmt'"
 
     - name: tofu validate
-      uses: dflook/tofu-validate@beb9bb77f83ff5e55f02120b06f4b1c54f23d4f7 # v2.2.2
+      uses: dflook/tofu-validate@c8302866c84a04122d6d267295cfff3a58040fce # v2.2.3
       id: Validation
       with:
         path: ${{ inputs.path }}
@@ -118,7 +118,7 @@ runs:
         backend_config_file: ${{ inputs.backend_config_file }}
 
     - name: Test tofu-version
-      uses: dflook/tofu-version@48dc8d2a0e064b61f4ebee7cf71dac362436d980 # v2.2.2
+      uses: dflook/tofu-version@9a5175482d81916fc46c86e2613f4ad06703bd18 # v2.2.3
       id: Versions
       with:
         path: ${{ inputs.path }}
@@ -128,7 +128,7 @@ runs:
   
     - name: tofu plan
       id: plan
-      uses: dflook/tofu-plan@b6aca1083d8f3876bb60f47414ac53eed2b9e1e7 # v2.2.2
+      uses: dflook/tofu-plan@3f5dc358343fb58cd60f83b019e810315aa8258f # v2.2.3
       with:
         path: ${{ inputs.path }}
         workspace: ${{ inputs.workspace }}
@@ -182,7 +182,7 @@ runs:
 
     - name: tofu apply
       if: github.ref_name == 'main' && steps.plan.outputs.changes == 'true'
-      uses: dflook/tofu-apply@719dd8f69cef4fe33e7a84a37947940b55dfd1db # v2.2.2
+      uses: dflook/tofu-apply@c254eb5b2e48978c05587373100d26b604c2182d # v2.2.3
       with:
         path: ${{ inputs.path }}
         workspace: ${{ inputs.workspace }}
